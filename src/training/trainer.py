@@ -1,6 +1,7 @@
 import os
 import json
 import numpy as np
+import joblib
 import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 
@@ -17,7 +18,7 @@ from config import (
     RAIN_WEIGHT_THRESHOLDS_MM,
     RAIN_WEIGHT_VALUES,
 )
-from src.data import load_and_prepare, build_dataset
+from src.data import load_and_prepare, build_dataset, RAW_REQUIRED_COLUMNS
 from src.evaluate import evaluate_predictions
 from src.utils.plotting import plot_series
 from src.utils.seed import set_seed
@@ -27,6 +28,33 @@ def rainfall_mm_thresholds_to_scaled_log(amount_scaler, thresholds_mm):
     """Convert mm/day thresholds into scaled log-rainfall thresholds used by the model."""
     log_values = np.log1p(np.array(thresholds_mm, dtype=float)).reshape(-1, 1)
     return amount_scaler.transform(log_values).reshape(-1).tolist()
+
+
+def save_inference_artifacts(data: dict, experiment_name: str, checkpoint_path: str):
+    """Persist preprocessing artifacts and metadata for reproducible inference."""
+    model_dir = os.path.dirname(checkpoint_path)
+
+    scalers_path = os.path.join(model_dir, f"{experiment_name}_scalers.pkl")
+    metadata_path = os.path.join(model_dir, f"{experiment_name}_metadata.json")
+
+    joblib.dump(
+        {
+            "feature_scaler": data["feature_scaler"],
+            "temp_scaler": data["temp_scaler"],
+            "amount_scaler": data["amount_scaler"],
+        },
+        scalers_path,
+    )
+
+    metadata = {
+        "model_path": checkpoint_path,
+        "window": WINDOW,
+        "feature_columns": data["feature_cols"],
+        "rain_prob_threshold": RAIN_PROB_THRESHOLD,
+        "required_input_columns": RAW_REQUIRED_COLUMNS,
+    }
+    with open(metadata_path, "w") as f:
+        json.dump(metadata, f, indent=2)
 
 
 def train_experiment(model_builder, experiment_name: str, use_weighted_loss: bool = False):
@@ -85,6 +113,8 @@ def train_experiment(model_builder, experiment_name: str, use_weighted_loss: boo
         callbacks=callbacks,
         verbose=1,
     )
+
+    save_inference_artifacts(data, experiment_name, checkpoint_path)
 
     temp_pred, status_prob, amount_pred = model.predict(data["X_test"])
 

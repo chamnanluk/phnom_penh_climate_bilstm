@@ -2,46 +2,69 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
+RAW_REQUIRED_COLUMNS = [
+    "Date",
+    "PRECTOTCORR",
+    "WS2M",
+    "T2M_RANGE",
+    "T2M_MAX",
+    "T2M_MIN",
+    "PS",
+    "ALLSKY_SFC_SW_DWN",
+    "RH2M",
+    "T2MDEW",
+]
 
-def load_and_prepare(path: str) -> pd.DataFrame:
-    """Load NASA weather data and create weather-memory features."""
-    df = pd.read_csv(path)
-    df["Date"] = pd.to_datetime(df["Date"])
-    df = df.sort_values("Date").set_index("Date")
+
+def prepare_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Prepare weather dataframe with the same feature engineering used in training."""
+    missing_cols = [col for col in RAW_REQUIRED_COLUMNS if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing required columns: {', '.join(missing_cols)}")
+
+    prepared = df.copy()
+    prepared["Date"] = pd.to_datetime(prepared["Date"])
+    prepared = prepared.sort_values("Date").set_index("Date")
 
     # Make daily index continuous and fill safely for time series modeling.
-    df = df.asfreq("D")
-    df = df.interpolate(method="time").ffill().bfill()
+    prepared = prepared.asfreq("D")
+    prepared = prepared.interpolate(method="time").ffill().bfill()
 
     # Temperature target: daily average from max/min temperature.
-    df["T2M_AVG"] = (df["T2M_MAX"] + df["T2M_MIN"]) / 2
+    prepared["T2M_AVG"] = (prepared["T2M_MAX"] + prepared["T2M_MIN"]) / 2
 
     # Rainfall targets.
-    df["rain_status_target"] = (df["PRECTOTCORR"] > 0).astype(int)
-    df["rain_amount_log"] = np.log1p(df["PRECTOTCORR"])
+    prepared["rain_status_target"] = (prepared["PRECTOTCORR"] > 0).astype(int)
+    prepared["rain_amount_log"] = np.log1p(prepared["PRECTOTCORR"])
 
     # Seasonal calendar features.
-    df["dayofyear"] = df.index.dayofyear
-    df["month"] = df.index.month
+    prepared["dayofyear"] = prepared.index.dayofyear
+    prepared["month"] = prepared.index.month
     for k in range(1, 4):
-        df[f"sin365_{k}"] = np.sin(2 * np.pi * k * df["dayofyear"] / 365.25)
-        df[f"cos365_{k}"] = np.cos(2 * np.pi * k * df["dayofyear"] / 365.25)
+        prepared[f"sin365_{k}"] = np.sin(2 * np.pi * k * prepared["dayofyear"] / 365.25)
+        prepared[f"cos365_{k}"] = np.cos(2 * np.pi * k * prepared["dayofyear"] / 365.25)
 
     # Change features: important before rainfall events.
     for col in ["RH2M", "PS", "T2MDEW", "WS2M", "T2M_AVG"]:
-        df[f"{col}_change1"] = df[col].diff()
-        df[f"{col}_change3"] = df[col].diff(3)
+        prepared[f"{col}_change1"] = prepared[col].diff()
+        prepared[f"{col}_change3"] = prepared[col].diff(3)
 
     # Lag and rolling features for meteorological memory.
     lag_base_cols = ["PRECTOTCORR", "RH2M", "T2MDEW", "WS2M", "PS", "T2M_AVG"]
     for col in lag_base_cols:
         for lag in [1, 3, 7, 14, 30]:
-            df[f"{col}_lag{lag}"] = df[col].shift(lag)
+            prepared[f"{col}_lag{lag}"] = prepared[col].shift(lag)
         for window in [3, 7, 14, 30]:
-            df[f"{col}_rollmean{window}"] = df[col].shift(1).rolling(window).mean()
-            df[f"{col}_rollstd{window}"] = df[col].shift(1).rolling(window).std()
+            prepared[f"{col}_rollmean{window}"] = prepared[col].shift(1).rolling(window).mean()
+            prepared[f"{col}_rollstd{window}"] = prepared[col].shift(1).rolling(window).std()
 
-    return df.dropna()
+    return prepared.dropna()
+
+
+def load_and_prepare(path: str) -> pd.DataFrame:
+    """Load NASA weather data and create weather-memory features."""
+    df = pd.read_csv(path)
+    return prepare_dataframe(df)
 
 
 def create_sequences(X, y_temp, y_status, y_amount, window: int):

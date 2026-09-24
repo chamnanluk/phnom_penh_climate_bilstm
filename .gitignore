@@ -1,7 +1,28 @@
+# Python environments and caches
 .venv/
+.venv-app/
+venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+.mypy_cache/
+
+# Notebook / tool caches
+.ipynb_checkpoints/
+
+# Local secrets and env files
+.env
+.env.*
+secrets.toml
+
+# Model binaries generated locally
 models/*.keras
+
+# Generated outputs
 outputs/**/*.csv
 outputs/**/*.json
 outputs/**/*.png
+
+# Keep intentionally tracked lightweight inference metadata/artifacts
+!models/baseline_metadata.json
+!models/baseline_scalers.pkl

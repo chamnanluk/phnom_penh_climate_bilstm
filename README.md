@@ -2,168 +2,145 @@
 
 This project forecasts daily average temperature and rainfall in Phnom Penh using NASA meteorological data.
 
-It contains two comparable models:
+It contains two comparable model paths:
 
-1. **Baseline Multi-task BiLSTM**
+1. **Baseline Multi-task BiLSTM (TensorFlow)**
    - Temperature regression
    - Rain / no-rain classification
    - Rainfall amount regression
-
-2. **BiLSTM + Attention + Weighted Rainfall Loss**
-   - Adds temporal attention
-   - Adds weighted rainfall loss to focus more on heavy rain events
-   - Keeps the same targets for fair comparison
+2. **Hybrid SARIMA + BiLSTM (PyTorch experiment)**
+   - SARIMA for linear/seasonal temperature signal
+   - BiLSTM for nonlinear residual correction
 
 ## Project structure
 
 ```text
-phnom_penh_climate_bilstm_v2/
+phnom_penh_climate_bilstm/
 ├── data/
 │   └── Dataset_with_RainStatus_V5.csv
-├── src/
-│   ├── data.py
-│   ├── evaluate.py
-│   ├── models/
-│   │   ├── baseline_model.py
-│   │   └── attention_model.py
-│   ├── losses/
-│   │   └── weighted_loss.py
-│   ├── training/
-│   │   └── trainer.py
-│   └── utils/
-│       ├── plotting.py
-│       └── seed.py
 ├── experiments/
 │   ├── train_baseline.py
-│   ├── train_attention_weighted.py
-│   └── compare_models.py
+│   └── train_hybrid_sarima_bilstm.py
 ├── models/
 ├── outputs/
-│   ├── baseline/
-│   ├── attention_weighted/
-│   └── comparison/
+├── src/
+│   ├── data.py
+│   ├── inference/
+│   ├── models/
+│   └── training/
+├── streamlit_app.py
 ├── config.py
 ├── requirements.txt
-└── README.md
+└── requirements-streamlit.txt
 ```
 
-## Dataset columns
+## Training (research workflow)
 
-- `Date`
-- `PRECTOTCORR`: precipitation / rainfall
-- `WS2M`: wind speed
-- `T2M_RANGE`
-- `T2M_MAX`
-- `T2M_MIN`
-- `PS`: atmospheric pressure
-- `ALLSKY_SFC_SW_DWN`: solar radiation
-- `RH2M`: relative humidity
-- `T2MDEW`: dew point temperature
-- `RainStatus`: binary rain indicator
-
-## Install
+Install training dependencies:
 
 ```bash
 python -m venv .venv
-
-# Windows
-.venv\Scripts\activate
-
-# macOS/Linux
-source .venv/bin/activate
-
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Run experiments
-
-Train baseline:
+Train the baseline model:
 
 ```bash
-python experiments/train_baseline.py
+python run_train.py
 ```
 
-Train improved model:
-
-```bash
-python experiments/train_attention_weighted.py
-```
-
-Compare models:
-
-```bash
-python experiments/compare_models.py
-```
-
-## Outputs
-
-Each experiment writes:
-
-```text
-outputs/<experiment_name>/metrics.json
-outputs/<experiment_name>/predictions.csv
-outputs/<experiment_name>/temperature_forecast.png
-outputs/<experiment_name>/rainfall_forecast.png
-```
-
-The comparison script writes:
-
-```text
-outputs/comparison/model_comparison.csv
-outputs/comparison/model_comparison_core_metrics.png
-```
-
-## Research interpretation
-
-The baseline model tests whether a shared BiLSTM representation can learn temperature, rain occurrence, and rainfall amount together. The improved model tests whether attention and weighted rainfall loss improve rare but important heavy-rainfall prediction while preserving temperature accuracy and rain-status detection.
-
-
----
-
-## Hybrid SARIMA + BiLSTM Experiment
-
-This version adds a temperature-focused hybrid model.
-
-### Concept
-
-```text
-Temperature series
-        ↓
-SARIMA captures linear + seasonal pattern
-        ↓
-Residual = Actual - SARIMA prediction
-        ↓
-BiLSTM learns nonlinear residual
-        ↓
-Final prediction = SARIMA prediction + BiLSTM residual prediction
-```
-
-### Run Hybrid Model
+Train the hybrid experiment:
 
 ```bash
 python experiments/train_hybrid_sarima_bilstm.py
 ```
 
-### Compare All Models
+---
+
+## Deploy the prediction app
+
+This app is inference-only and **does not retrain** in Streamlit.
+
+### 1) Local setup for prediction app
+
+Use a clean environment with deployment-focused dependencies:
 
 ```bash
-python experiments/compare_all_models.py
+python -m venv .venv-app
+source .venv-app/bin/activate  # Windows: .venv-app\Scripts\activate
+pip install -r requirements-streamlit.txt
 ```
 
-### Hybrid Outputs
+### 2) Train/export baseline artifacts once (local or Colab)
 
-```text
-outputs/hybrid_sarima_bilstm/
-├── metrics.json
-├── predictions.csv
-├── training_history.csv
-├── sarima_summary.txt
-├── sarima_config.json
-├── hybrid_temperature_forecast.png
-└── sarima_vs_hybrid_metrics.png
+Run baseline training once:
+
+```bash
+python run_train.py
 ```
 
-### Notes
+This produces baseline artifacts for inference:
 
-- The hybrid SARIMA + BiLSTM model is designed mainly for **temperature**, because temperature is continuous and seasonal.
-- Rainfall remains better handled by the multi-task BiLSTM framework because rainfall is zero-heavy, skewed, and event-driven.
+- `models/best_baseline.keras`
+- `models/baseline_scalers.pkl`
+- `models/baseline_metadata.json`
+
+> If these files are missing, the app will show a model artifact error with guidance.
+
+### 3) Run the Streamlit app locally
+
+```bash
+streamlit run streamlit_app.py
+```
+
+Open the local URL shown by Streamlit (usually `http://localhost:8501`).
+
+### 4) Input format expected by the app
+
+Provide CSV data with at least these columns:
+
+- `Date`
+- `PRECTOTCORR`
+- `WS2M`
+- `T2M_RANGE`
+- `T2M_MAX`
+- `T2M_MIN`
+- `PS`
+- `ALLSKY_SFC_SW_DWN`
+- `RH2M`
+- `T2MDEW`
+
+The app validates:
+
+- required columns
+- valid dates
+- numeric values
+- missing values
+- minimum sequence length
+
+### 5) Streamlit Community Cloud configuration
+
+In Streamlit Community Cloud, configure:
+
+- **Repository:** `chamnanluk/phnom_penh_climate_bilstm`
+- **Branch:** `main` (or your deployment branch)
+- **Main file path:** `streamlit_app.py`
+- **Dependencies file:** `requirements-streamlit.txt`
+
+### 6) Common errors and fixes
+
+- **`Model artifact error: Metadata file not found...`**
+  - Run `python run_train.py` and ensure artifact files exist under `models/`.
+- **`Input validation error: Missing required columns...`**
+  - Ensure CSV headers exactly match required names.
+- **`Input validation error: Not enough usable rows...`**
+  - Provide a longer recent history (continuous daily records).
+- **TensorFlow not installed**
+  - Install `requirements-streamlit.txt` before launching the app.
+
+## Training vs prediction (important)
+
+- **Training scripts** (`run_train.py`, `experiments/*`) are for research and model development.
+- **Prediction app** (`streamlit_app.py`) is for end-user inference with already-saved artifacts.
+- The app intentionally does not start model training.
