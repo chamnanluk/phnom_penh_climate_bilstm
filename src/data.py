@@ -3,9 +3,9 @@ import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
 
-def load_and_prepare(path: str) -> pd.DataFrame:
-    """Load NASA weather data and create weather-memory features."""
-    df = pd.read_csv(path)
+def prepare_weather_dataframe(raw_df: pd.DataFrame) -> pd.DataFrame:
+    """Create model features from raw NASA-weather records."""
+    df = raw_df.copy()
     df["Date"] = pd.to_datetime(df["Date"])
     df = df.sort_values("Date").set_index("Date")
 
@@ -42,6 +42,11 @@ def load_and_prepare(path: str) -> pd.DataFrame:
             df[f"{col}_rollstd{window}"] = df[col].shift(1).rolling(window).std()
 
     return df.dropna()
+
+
+def load_and_prepare(path: str) -> pd.DataFrame:
+    """Load NASA weather data and create weather-memory features."""
+    return prepare_weather_dataframe(pd.read_csv(path))
 
 
 def create_sequences(X, y_temp, y_status, y_amount, window: int):

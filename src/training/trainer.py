@@ -1,5 +1,6 @@
 import os
 import json
+import joblib
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
@@ -59,6 +60,7 @@ def train_experiment(model_builder, experiment_name: str, use_weighted_loss: boo
     model.summary()
 
     checkpoint_path = os.path.join(model_dir, f"best_{experiment_name}.keras")
+    artifacts_path = os.path.join(model_dir, f"{experiment_name}_artifacts.joblib")
     callbacks = [
         EarlyStopping(monitor="val_loss", patience=10, restore_best_weights=True),
         ReduceLROnPlateau(monitor="val_loss", patience=5, factor=0.5),
@@ -84,6 +86,18 @@ def train_experiment(model_builder, experiment_name: str, use_weighted_loss: boo
         batch_size=BATCH_SIZE,
         callbacks=callbacks,
         verbose=1,
+    )
+
+    # Save every preprocessing object required for standalone inference.
+    joblib.dump(
+        {
+            "feature_columns": data["feature_cols"],
+            "feature_scaler": data["feature_scaler"],
+            "temp_scaler": data["temp_scaler"],
+            "amount_scaler": data["amount_scaler"],
+            "window": WINDOW,
+        },
+        artifacts_path,
     )
 
     temp_pred, status_prob, amount_pred = model.predict(data["X_test"])

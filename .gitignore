@@ -1,7 +1,11 @@
 .venv/
+.uv-cache/
+.uv-python/
 __pycache__/
 *.pyc
 models/*.keras
+!models/best_baseline.keras
+!models/baseline_artifacts.joblib
 outputs/**/*.csv
 outputs/**/*.json
 outputs/**/*.png

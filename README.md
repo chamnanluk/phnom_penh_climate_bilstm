@@ -63,16 +63,33 @@ phnom_penh_climate_bilstm_v2/
 
 ## Install
 
+On a machine where UV's default cache or managed-Python directory is not
+writable, set project-local locations once in PowerShell before running UV:
+
+```powershell
+$env:UV_CACHE_DIR = "$PWD\.uv-cache"
+$env:UV_PYTHON_INSTALL_DIR = "$PWD\.uv-python"
+```
+
 ```bash
-python -m venv .venv
+# Install the project Python once (UV downloads it if needed).
+uv python install 3.12
 
-# Windows
-.venv\Scripts\activate
+# Create .venv and install the exact locked dependencies.
+uv sync
+```
 
-# macOS/Linux
-source .venv/bin/activate
+If Windows reports an access-denied error while updating UV's cache, rerun the
+last command without caching:
 
-pip install -r requirements.txt
+```bash
+uv sync --no-cache
+```
+
+Run scripts through UV; activation is not required:
+
+```bash
+uv run python experiments/train_baseline.py
 ```
 
 ## Run experiments
@@ -80,19 +97,19 @@ pip install -r requirements.txt
 Train baseline:
 
 ```bash
-python experiments/train_baseline.py
+uv run python experiments/train_baseline.py
 ```
 
 Train improved model:
 
 ```bash
-python experiments/train_attention_weighted.py
+uv run python experiments/train_attention_weighted.py
 ```
 
 Compare models:
 
 ```bash
-python experiments/compare_models.py
+uv run python experiments/compare_models.py
 ```
 
 ## Outputs
@@ -112,6 +129,37 @@ The comparison script writes:
 outputs/comparison/model_comparison.csv
 outputs/comparison/model_comparison_core_metrics.png
 ```
+
+## Deploy the baseline forecast app
+
+### Application preview
+
+![Phnom Penh Climate Forecast Streamlit application](docs/images/streamlit-app.png)
+
+The Streamlit app performs prediction only; it does not train a model. Train
+the baseline once to create the required deployable artifacts:
+
+```bash
+uv run python experiments/train_baseline.py
+```
+
+This produces the model and preprocessing artifacts used by the app:
+
+```text
+models/best_baseline.keras
+models/baseline_artifacts.joblib
+```
+
+Start the application locally:
+
+```bash
+uv run streamlit run streamlit_app.py
+```
+
+For Streamlit Community Cloud, push the repository including both files above,
+then create an app with `streamlit_app.py` as the entrypoint. The root
+`requirements.txt` contains the smaller CPU-oriented dependency set used by
+the deployed baseline app.
 
 ## Research interpretation
 
@@ -141,13 +189,13 @@ Final prediction = SARIMA prediction + BiLSTM residual prediction
 ### Run Hybrid Model
 
 ```bash
-python experiments/train_hybrid_sarima_bilstm.py
+uv run python experiments/train_hybrid_sarima_bilstm.py
 ```
 
 ### Compare All Models
 
 ```bash
-python experiments/compare_all_models.py
+uv run python experiments/compare_all_models.py
 ```
 
 ### Hybrid Outputs
